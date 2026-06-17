@@ -29,8 +29,8 @@ function sh(cmd, args, opts = {}) {
   }
   return r;
 }
-function engine(cmd, home) {
-  return sh("node", [ENGINE, cmd], { env: { ...process.env, HOME: home, USERPROFILE: home }, allowFail: true });
+function engine(cmd, home, ...extra) {
+  return sh("node", [ENGINE, cmd, ...extra], { env: { ...process.env, HOME: home, USERPROFILE: home }, allowFail: true });
 }
 function writeJson(p, obj) { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, JSON.stringify(obj, null, 2)); }
 function writeJsonl(p, lines) { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, lines.map((l) => JSON.stringify(l)).join("\n")); }
@@ -92,7 +92,18 @@ writeJsonl(path.join(cfgA.sessionsRoot, folderC, "s2.jsonl"), [
   { type: "user", cwd: COMMON, sessionId: "s2", timestamp: "2026-06-16T11:00:00Z", message: { role: "user", content: "common project work" } },
 ]);
 
-const rA = engine("push", HOMEA);
+// the planted token must BLOCK the first push by default (nothing committed/pushed)
+const rBlock = engine("push", HOMEA);
+ok(/SECRET-WARNUNG/.test(rBlock.stdout), "secret scan flagged planted token");
+ok(/ABGEBROCHEN/.test(rBlock.stdout), "push blocked by default when a secret is found");
+{
+  const v0 = path.join(ROOT, "verify0");
+  sh("git", ["clone", REMOTE, v0], { allowFail: true });
+  ok(!fs.existsSync(path.join(v0, "vault-mirror", "Note.md")), "blocked push uploaded nothing");
+}
+
+// push for real with an explicit override
+const rA = engine("push", HOMEA, "--allow-secrets");
 console.log("STDOUT:\n" + rA.stdout);
 if (rA.stderr) console.log("STDERR:\n" + rA.stderr);
 
@@ -107,7 +118,14 @@ ok(fs.existsSync(path.join(verify, "sessions", folderC, "s2.jsonl")), "symmetric
 const manA = JSON.parse(read(path.join(verify, "manifest.json")));
 ok(manA.sessions[folderApp] && manA.sessions[folderApp].cwd === cwdApp, "manifest records App cwd");
 ok(manA.sessions[folderApp].sourceHome === HOMEA, "manifest records sourceHome = HOMEA");
-ok(/SECRET-WARNUNG/.test(rA.stdout), "secret scan flagged planted token");
+
+// === secret allowlist lets a known false positive through ===================
+console.log("\n[A2] secret allowlist");
+const cfgApath = path.join(HOMEA, ".obsidian-brain-sync", "config.json");
+const cfgA2 = JSON.parse(read(cfgApath)); cfgA2.secretAllowlist = ["ghp_ABCDEFGHIJKLMNOPQRST1234"]; writeJson(cfgApath, cfgA2);
+const rA2 = engine("push", HOMEA); // no --allow-secrets this time
+ok(!/ABGEBROCHEN/.test(rA2.stdout), "allowlisted token does not block the push");
+ok(!/SECRET-WARNUNG/.test(rA2.stdout), "allowlisted token is not reported as a secret");
 
 // === MACHINE B: pull (different HOME -> remap) =============================
 console.log("\n[B] pull on a different HOME");

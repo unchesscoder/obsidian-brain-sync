@@ -126,7 +126,7 @@ There is no middleman. This plugin runs **entirely on your machine** and syncs *
 ## Safety & privacy by design
 
 - The data repo is created **private** and must stay private — session logs can contain pasted secrets or personal data.
-- Every push runs a **secret scan** (API keys, GitHub/Slack tokens, private-key blocks, …) and warns you about matches *before* anything leaves your machine.
+- Every push runs a **secret scan** (API keys, GitHub/Slack tokens, private-key blocks, …) and **blocks the push** if it finds anything — nothing is committed or uploaded. Clean the file and retry, allowlist a known false positive (e.g. an example token) in `secretAllowlist`, or push on purpose with `--allow-secrets`.
 - **True mirror with safe deletes.** A note deleted on one machine is removed on the other on the next pull — but *only* if that file was part of the last synced state and you have not changed it locally. Files you created locally that the remote never had are **never** touched, and the very first sync (no baseline yet) never deletes. Can be turned off per pull with `--no-delete` or per machine via `mirrorDelete: false` in the config.
 - Every pull takes a **full vault backup first**, so any overwrite *or deletion* is always recoverable.
 - A **newer-wins** rule per file means the sync never silently clobbers work that is newer locally — it skips and warns instead. A delete-vs-local-edit clash is resolved by **keeping your local edit** and warning.
@@ -150,12 +150,15 @@ There is no middleman. This plugin runs **entirely on your machine** and syncs *
 | `excludes` | Extra file/folder names or relative paths to skip when mirroring. |
 | `pathMap` | Explicit `source → local` path mappings for session remapping. |
 | `mirrorDelete` | `true` (default) propagates deletes; set `false` to make pull purely additive. |
+| `secretAllowlist` | Exact matched-token strings to treat as known false positives (e.g. example/placeholder tokens) so they don't block a push. |
 
-Per-run overrides on the engine: `--no-delete` disables delete-propagation for a single pull, and `--dry-run` previews **any** command (push, pull) without writing or pushing anything.
+Per-run overrides on the engine: `--no-delete` disables delete-propagation for a single pull, `--allow-secrets` pushes even though the secret scan found something, and `--dry-run` previews **any** command (push, pull) without writing or pushing anything.
 
 ```
-node lib/brain-sync.mjs pull --dry-run     # see exactly what a pull would add / overwrite / delete
-node lib/brain-sync.mjs pull --no-delete   # pull this once without removing anything
+node lib/brain-sync.mjs pull --dry-run        # see exactly what a pull would add / overwrite / delete
+node lib/brain-sync.mjs pull --no-delete      # pull this once without removing anything
+node lib/brain-sync.mjs push --dry-run        # see what would be pushed + any secret findings
+node lib/brain-sync.mjs push --allow-secrets  # push despite a secret finding (deliberate)
 ```
 
 ## Troubleshooting
@@ -163,7 +166,7 @@ node lib/brain-sync.mjs pull --no-delete   # pull this once without removing any
 - **"It deleted a note I wanted."** Restore it from the newest `~/.obsidian-brain-sync/backups/<timestamp>/` (a backup is taken before every pull). To stop delete-propagation, set `mirrorDelete: false` in `config.json` or pull with `--no-delete`.
 - **A note keeps coming back after I delete it.** You deleted it on one machine but never pushed from there, or the other machine still runs an older version. Deletes only propagate when **both** machines run ≥ v0.2.0 and you push from the machine where you deleted.
 - **`claude --resume` doesn't list a session.** The pull printed a remap hint: the project's path doesn't exist on this machine yet. Open or create that folder (or add a `pathMap` entry) and resume will find it.
-- **Secret warning on push.** A credential was detected in a file about to be pushed. The repo is private so the push still proceeds, but review and rotate the match, then clean the file so future snapshots don't carry it.
+- **Push aborted: secret found.** A credential was detected in a file about to be pushed, so the push stopped and uploaded nothing. Review the match. If it's real, clean the file (and rotate the credential) and push again. If it's a false positive (e.g. an example token like `ghp_ABCDEFGHIJKLMNOPQRST1234`), add the exact string to `secretAllowlist` in the config. To push anyway on purpose, use `--allow-secrets`.
 - **Reset the delete-tracking.** Delete `~/.obsidian-brain-sync/vault-baseline.json`; the next sync rebuilds it and is guaranteed not to delete anything on that run.
 - **A pull or push seems to ignore the other machine.** Make sure `gh` is logged into the **same** GitHub account on both, and that the other machine actually finished its `/brain-push`.
 

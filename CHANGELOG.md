@@ -3,6 +3,19 @@
 All notable changes to **obsidian-brain-sync** are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] — 2026-06-17
+
+### Changed
+- **The secret scan now blocks the push by default.** Previously it only warned and pushed anyway.
+  If any potential secret is detected, the push aborts (exit 4) and **nothing is committed or
+  uploaded**. This makes accidental credential leaks structurally hard instead of merely flagged.
+
+### Added
+- `secretAllowlist` config field: exact matched-token strings to treat as known false positives
+  (e.g. placeholder/example tokens) so they don't block a push.
+- `--allow-secrets` flag to push deliberately despite a finding.
+- `--dry-run push` now notes whether the findings would block the real push.
+
 ## [0.2.0] — 2026-06-17
 
 ### Added
