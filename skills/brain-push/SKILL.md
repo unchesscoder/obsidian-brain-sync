@@ -44,9 +44,12 @@ und der Hinweis: auf dem anderen Geraet `/brain-pull` nutzen, um den Stand zu ho
 ## Wichtige Regeln
 
 - **Vor der Arbeit `pull`, danach `push`** - das ist die goldene Regel, damit nichts kollidiert.
-- Die Engine pullt intern zuerst (damit ein neuerer Stand des anderen Geraets nicht ueberschrieben
-  wird). Bei einem echten Merge-Konflikt stoppt sie und meldet den Pfad - dann nicht raten, dem User berichten.
-- Sessions/Vault werden **newer-wins** behandelt; nichts wird blind ueberschrieben.
+- Die Engine richtet die interne Arbeitskopie vor dem Push hart am Remote-Stand aus (fetch + reset),
+  baut darauf den neuen Stand auf und pusht. Dadurch entstehen keine Merge-Konflikte und kein
+  Haengenbleiben an alten, nicht committeten Zwischenstaenden mehr.
+- Sessions **und** Vault werden **newer-wins** behandelt; nichts Neueres wird blind ueberschrieben.
+- Der Vault-Mirror ist ein **vollstaendiger Schnappschuss** deines Vaults: loeschst du hier eine Notiz,
+  verschwindet sie beim naechsten `pull` auch auf dem anderen Geraet (echter Spiegel, sicher abgefedert).
 - `Briefings/` bzw. jeder Unterordner mit eigenem `.git` wird automatisch ausgelassen (synct separat).
 
 _Teil von obsidian-brain-sync._

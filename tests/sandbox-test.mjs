@@ -149,6 +149,50 @@ fs.utimesSync(cOnB, future, future);
 const rC = engine("pull", HOMEB);
 ok(/uebersprungen \(lokal neuer/.test(rC.stdout) || read(cOnB).includes("LOCAL-NEWER-MARKER"), "locally-newer session not overwritten");
 
+// === newer-wins on pull for VAULT notes ====================================
+console.log("\n[C2] vault newer-wins");
+// edit Note.md locally and make it newer than the manifest, pull -> must be kept
+const noteB = path.join(cfgB.vaultPath, "Note.md");
+writeText(noteB, "LOCAL VAULT EDIT WINS\n");
+const fut2 = new Date(Date.now() + 120000);
+fs.utimesSync(noteB, fut2, fut2);
+const rC2 = engine("pull", HOMEB);
+ok(read(noteB).includes("LOCAL VAULT EDIT WINS"), "locally-newer vault note not overwritten");
+ok(/uebersprungen \(lokal neuer/.test(rC2.stdout), "pull reports skipped locally-newer vault file");
+
+// === delete-propagation (true mirror) ======================================
+console.log("\n[C3] delete-propagation");
+// a brand-new local-only note on B that the remote has never seen -> must survive
+writeText(path.join(cfgB.vaultPath, "LocalOnlyB.md"), "only on B\n");
+// A adds a shared note + pushes, B pulls so both have it (B's baseline records it)
+writeText(path.join(cfgA.vaultPath, "ToDelete.md"), "temp\n");
+engine("push", HOMEA);
+engine("pull", HOMEB);
+ok(fs.existsSync(path.join(cfgB.vaultPath, "ToDelete.md")), "shared note present on B before delete");
+// A deletes it + pushes, B pulls -> must be removed on B too
+fs.rmSync(path.join(cfgA.vaultPath, "ToDelete.md"));
+engine("push", HOMEA);
+const rC3 = engine("pull", HOMEB);
+ok(!fs.existsSync(path.join(cfgB.vaultPath, "ToDelete.md")), "remotely-deleted note removed on B (mirror delete)");
+ok(/geloescht/.test(rC3.stdout), "pull reports the deletion");
+ok(fs.existsSync(path.join(cfgB.vaultPath, "LocalOnlyB.md")), "local-only note never touched by mirror delete");
+ok(fs.existsSync(path.join(cfgB.vaultPath, "old.md")), "pre-existing local-only note still safe");
+
+// === modify/delete conflict -> keep local ==================================
+console.log("\n[C4] modify/delete conflict keeps local edit");
+writeText(path.join(cfgA.vaultPath, "Keep.md"), "v1\n");
+engine("push", HOMEA);
+engine("pull", HOMEB); // B now has Keep.md, baseline records it
+// B edits Keep.md locally (newer); A deletes Keep.md and pushes
+writeText(path.join(cfgB.vaultPath, "Keep.md"), "B local edit\n");
+const futK = new Date(Date.now() + 180000); fs.utimesSync(path.join(cfgB.vaultPath, "Keep.md"), futK, futK);
+fs.rmSync(path.join(cfgA.vaultPath, "Keep.md"));
+engine("push", HOMEA);
+const rC4 = engine("pull", HOMEB);
+ok(fs.existsSync(path.join(cfgB.vaultPath, "Keep.md")) && read(path.join(cfgB.vaultPath, "Keep.md")).includes("B local edit"),
+   "modify/delete conflict keeps the local edit");
+ok(/Loesch-Konflikt/.test(rC4.stdout), "pull reports the modify/delete conflict");
+
 // === pull on an EMPTY clone created before any push (the real first-use case) =====
 console.log("\n[D] pull on an empty clone (was cloned while remote was empty)");
 const rD = engine("pull", HOMED);

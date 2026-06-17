@@ -32,21 +32,48 @@ Along the way it also writes a searchable **session index** note into your vault
 
 Two clearly separated repositories:
 
-1. **The tool** — this plugin. Installed once per machine, shared by everyone.
+1. **The tool** — this plugin (`obsidian-brain-sync`). Installed once per machine, shared by everyone.
 2. **Your data** — `<you>/obsidian-brain`, a **private** repo created automatically by `/brain-setup`. This is yours alone.
 
-A single dependency-free Node engine (`lib/brain-sync.mjs`) does the work:
+Everything local lives under `~/.obsidian-brain-sync/`:
 
 ```
 ~/.obsidian-brain-sync/
-  config.json        # account, repo, vault path, machine name, excludes, pathMap
-  repo/              # local clone of your private data repo
-  backups/<ts>/      # full vault snapshot taken automatically before every pull
+  config.json          # account, repo, vault path, machine name, excludes, pathMap, mirrorDelete
+  repo/                # local clone of your private data repo (engine-managed, disposable)
+  vault-baseline.json  # the vault file set this machine last synced (for safe delete-propagation)
+  backups/<ts>/        # full vault snapshot taken automatically before every pull
 ```
 
-On **push** it mirrors the vault into `vault-mirror/`, copies the complete session trees
-(`~/.claude/projects/`, including subagent logs and tool results) into `sessions/`, records
-everything in `manifest.json`, then commits and pushes. **Pull** does the reverse, safely.
+…and the data repo holds:
+
+```
+<you>/obsidian-brain
+  vault-mirror/    # a full snapshot of the last pusher's vault
+  sessions/        # the complete ~/.claude/projects tree (sessions + subagents + tool results)
+  manifest.json    # per-file modification times, session cwd/home, push/pull history
+```
+
+A single dependency-free Node engine (`lib/brain-sync.mjs`, no npm packages, no `jq`) does all the work.
+
+### The sync model
+
+Both push and pull start by **hard-aligning the local clone to the remote tip** (`git fetch` + `git reset --hard`). The clone is purely a staging area the engine regenerates from scratch, so this can never lose real data — and it means there are **no Git merge conflicts to resolve** and no half-committed state to get stuck on. (Your actual vault lives in a different directory and is never touched by this reset.)
+
+**Push** then snapshots your vault into `vault-mirror/`, copies your full session tree into `sessions/`, records every file's modification time in `manifest.json`, runs the secret scan, commits, and pushes. It also saves that snapshot as this machine's *baseline* — the state now known to be common with the remote.
+
+**Pull** reconciles three things for every file — your **local** vault, the **remote** mirror, and your **baseline** — with these rules:
+
+| Situation | Result |
+|-----------|--------|
+| File only on the remote (you never had it) | **added** locally |
+| File on both sides, the remote copy is newer | **overwritten** locally |
+| File on both sides, your *local* copy is newer | **kept** (newer-wins), reported |
+| File gone from the remote, was in your baseline, unchanged locally | **deleted** locally — the delete propagated |
+| File gone from the remote, but you edited it locally | **kept**, reported as a conflict |
+| File only local, never in the baseline | **untouched** — it's your new work, pending its own push |
+
+Sessions follow the same newer-wins idea and additionally **remap their paths** so `claude --resume` finds them on the new machine even under a different username or OS.
 
 ## Requirements
 
@@ -100,24 +127,55 @@ There is no middleman. This plugin runs **entirely on your machine** and syncs *
 
 - The data repo is created **private** and must stay private — session logs can contain pasted secrets or personal data.
 - Every push runs a **secret scan** (API keys, GitHub/Slack tokens, private-key blocks, …) and warns you about matches *before* anything leaves your machine.
-- **Pull never deletes** local files — it only overwrites and adds. A note deleted on machine A will not vanish on machine B. (Deliberate, to prevent data loss.)
-- Every pull takes a **full vault backup first**, so an unexpected overwrite is always recoverable.
-- A **newer-wins** rule per file means the sync never silently clobbers work that is newer locally — it skips and warns instead.
+- **True mirror with safe deletes.** A note deleted on one machine is removed on the other on the next pull — but *only* if that file was part of the last synced state and you have not changed it locally. Files you created locally that the remote never had are **never** touched, and the very first sync (no baseline yet) never deletes. Can be turned off per pull with `--no-delete` or per machine via `mirrorDelete: false` in the config.
+- Every pull takes a **full vault backup first**, so any overwrite *or deletion* is always recoverable.
+- A **newer-wins** rule per file means the sync never silently clobbers work that is newer locally — it skips and warns instead. A delete-vs-local-edit clash is resolved by **keeping your local edit** and warning.
 
 ## Design notes & honest limitations
 
-- **Sequential use is assumed** — one machine at a time. The engine pulls before it pushes and uses newer-wins per file, so it won't blindly overwrite. A real merge conflict makes it **stop and report** rather than guess.
+- **Sequential use is assumed** — one machine at a time. Before each push or pull the engine **hard-aligns its internal working copy to the remote tip** and rebuilds from there, then reconciles per file with newer-wins — so there are no Git merge conflicts to resolve and no stale, half-committed state to get stuck on. Your real vault lives in a separate directory and is never touched by this reset.
 - **Path remapping** lets `claude --resume` work even when your machines use different usernames, paths, or operating systems. The manifest stores each session's original working directory and home dir; on import the engine swaps the home prefix (plus any explicit `config.pathMap` entries), recomputes Claude Code's session-folder name, and rewrites the stored `cwd`. This relies on Claude Code's folder-naming scheme — verified as `cwd.replace(/[^a-zA-Z0-9]/g, "-")` — so it is **exact for symmetric setups** (same path on both machines) and **best-effort** across operating systems.
-- **Nested Git repos** inside your vault (a sub-folder with its own `.git`) are skipped automatically — they already sync through their own remote.
-- Deletions do not propagate (see above). A future `--mirror-delete` mode could opt into this.
+- **Nested Git repos** inside your vault (a sub-folder with its own `.git`) are skipped automatically — they already sync through their own remote, and are therefore also exempt from delete-propagation.
+- **Deletes propagate via a machine-local baseline** (`~/.obsidian-brain-sync/vault-baseline.json`) that records the last synced file set. This is a three-way reconciliation (baseline vs remote vs local), not a content-level merge: if the *same* file is edited on both machines without syncing in between, newer-wins keeps the newer version and the older edit is lost. For one-machine-at-a-time use (pull before you start, push when you stop) this never triggers.
+
+## Configuration
+
+`~/.obsidian-brain-sync/config.json` is written by `/brain-setup`; you can edit it by hand:
+
+| Field | Meaning |
+|-------|---------|
+| `vaultPath` | Absolute path to the Obsidian vault that gets mirrored. |
+| `sessionsRoot` | Where Claude Code stores sessions (default `~/.claude/projects`). |
+| `indexPath` | Where the generated session-index note is written inside the vault. |
+| `excludes` | Extra file/folder names or relative paths to skip when mirroring. |
+| `pathMap` | Explicit `source → local` path mappings for session remapping. |
+| `mirrorDelete` | `true` (default) propagates deletes; set `false` to make pull purely additive. |
+
+Per-run overrides on the engine: `--no-delete` disables delete-propagation for a single pull, and `--dry-run` previews **any** command (push, pull) without writing or pushing anything.
+
+```
+node lib/brain-sync.mjs pull --dry-run     # see exactly what a pull would add / overwrite / delete
+node lib/brain-sync.mjs pull --no-delete   # pull this once without removing anything
+```
+
+## Troubleshooting
+
+- **"It deleted a note I wanted."** Restore it from the newest `~/.obsidian-brain-sync/backups/<timestamp>/` (a backup is taken before every pull). To stop delete-propagation, set `mirrorDelete: false` in `config.json` or pull with `--no-delete`.
+- **A note keeps coming back after I delete it.** You deleted it on one machine but never pushed from there, or the other machine still runs an older version. Deletes only propagate when **both** machines run ≥ v0.2.0 and you push from the machine where you deleted.
+- **`claude --resume` doesn't list a session.** The pull printed a remap hint: the project's path doesn't exist on this machine yet. Open or create that folder (or add a `pathMap` entry) and resume will find it.
+- **Secret warning on push.** A credential was detected in a file about to be pushed. The repo is private so the push still proceeds, but review and rotate the match, then clean the file so future snapshots don't carry it.
+- **Reset the delete-tracking.** Delete `~/.obsidian-brain-sync/vault-baseline.json`; the next sync rebuilds it and is guaranteed not to delete anything on that run.
+- **A pull or push seems to ignore the other machine.** Make sure `gh` is logged into the **same** GitHub account on both, and that the other machine actually finished its `/brain-push`.
 
 ## Testing
 
-A self-contained end-to-end test runs the full push → pull → remap cycle against a local Git remote with synthetic data (no network, no real data):
+A self-contained end-to-end test runs the full push → pull → remap → delete-propagation cycle against a local Git remote with synthetic data (no network, no real data, no GitHub):
 
 ```
 node tests/sandbox-test.mjs
 ```
+
+It covers vault mirroring, nested-repo skipping, session import with path remapping and subagent sidecars, newer-wins for both sessions and vault notes, delete-propagation, the modify-vs-delete conflict, and first-use on an empty clone.
 
 ## Disclaimer
 

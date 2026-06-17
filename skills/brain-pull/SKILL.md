@@ -36,17 +36,26 @@ Session-Pfade aufs lokale Home, falls noetig.
 Dem User melden:
 - Von welchem Geraet der Stand kommt und von wann (Engine gibt "Letzter Stand: ... von ... @ ...").
 - Wie viele Sessions aktualisiert wurden (und ob welche **remapped** wurden).
-- Den **Backup-Pfad** (Sicherheit, falls doch etwas lokal ueberschrieben wurde).
-- Falls die Engine `lokal neuer - ungepushte Arbeit` meldet: den User warnen, dass er auf diesem
-  Geraet ungepushte Sessions hatte; die wurden bewusst NICHT ueberschrieben.
+- Den **Backup-Pfad** (Sicherheit, falls doch etwas lokal ueberschrieben oder geloescht wurde).
+- Wie viele Vault-Dateien aktualisiert und (falls `geloescht` gemeldet) **geloescht** wurden.
+- Falls die Engine `lokal neuer - ungepushte Arbeit` oder `Loesch-Konflikt behalten` meldet: den User
+  darauf hinweisen, dass dort ungepushte lokale Aenderungen waren, die bewusst NICHT angetastet wurden.
 
 ## Wichtige Regeln
 
 - **Vor der Arbeit pullen.** Wer ohne Pull losarbeitet und dann pullt, riskiert Kollisionen
   (abgefedert durch Backup + newer-wins, aber unnoetig).
-- Lokale Dateien werden **nie geloescht** - Pull ueberschreibt/ergaenzt nur. Geloeschte Notizen auf dem
-  anderen Geraet bleiben hier also bestehen (bewusst, gegen Datenverlust).
-- Bei Merge-Konflikt im Repo stoppt die Engine und nennt den Pfad - dem User berichten, nicht raten.
+- **Echter Spiegel mit sicherem Loeschen:** Eine auf dem anderen Geraet geloeschte Notiz wird hier
+  beim Pull ebenfalls entfernt - **aber nur**, wenn sie Teil des letzten Sync-Stands war (lokale
+  Baseline) und lokal **nicht** geaendert wurde. Lokal neu angelegte Dateien, die die Gegenseite nie
+  hatte, werden **nie** geloescht; der allererste Sync (noch keine Baseline) loescht nie. Vor jedem
+  Pull wird ohnehin ein volles Backup angelegt. Abschaltbar mit `--no-delete` bzw. `mirrorDelete:false`.
+- **Newer-wins** gilt fuer Vault-Notizen **und** Sessions: eine lokal neuer bearbeitete Datei wird NICHT
+  von einer aelteren Remote-Version ueberschrieben (Meldung `lokal neuer`). Loeschen-vs-lokale-Aenderung
+  wird zugunsten der **lokalen Aenderung** aufgeloest (Meldung `Loesch-Konflikt behalten`).
+- Die Engine richtet die interne Arbeitskopie vor dem Pull hart am Remote-Stand aus (fetch + reset).
+  Dadurch gibt es keine Merge-Konflikte und kein Haengenbleiben an alten Zwischenstaenden mehr; der
+  echte Vault wird davon nie beruehrt (das passiert in einem separaten Verzeichnis).
 - Cross-OS/anderer-Username: Remapping ist best-effort. Bei gleichem Pfad auf beiden Geraeten (z.B.
   zwei Windows mit gleichem Usernamen) ist Resume exakt.
 
