@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "obsidian-brain-sync",
-      "description": "Sync your Obsidian vault and Claude Code sessions across machines through a private GitHub repo. Free alternative to Obsidian Sync.",
+      "description": "Keep your Obsidian vault and Claude Code sessions in sync across machines through your own private GitHub repo, for free. Push on one device, pull on another, and resume the exact same conversation with `claude --resume`.",
       "author": {
         "name": "unchesscoder"
       },
