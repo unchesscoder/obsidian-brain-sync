@@ -74,6 +74,10 @@ Then, on **each** machine:
 
 > **Golden rule: pull before you work, push when you're done.**
 
+## Your data stays yours
+
+There is no middleman. This plugin runs **entirely on your machine** and syncs **directly to a private GitHub repository in your own account**. There is no server, no telemetry, no third-party endpoint, and no shared storage. The plugin author never receives, sees, or has access to your vault or your sessions — the only external service involved is GitHub, under your own account and your own terms.
+
 ## Safety & privacy by design
 
 - The data repo is created **private** and must stay private — session logs can contain pasted secrets or personal data.
@@ -97,6 +101,18 @@ A self-contained end-to-end test runs the full push → pull → remap cycle aga
 node tests/sandbox-test.mjs
 ```
 
+## Disclaimer
+
+This is an independent, community-built tool. Please read this before using it.
+
+- **No warranty.** The software is provided "as is", without warranty of any kind, to the fullest extent permitted by law (see [LICENSE](LICENSE)). You use it at your own risk. While it takes a full vault backup before every pull and never overwrites newer local files, the authors accept no liability for any data loss, corruption, or other damage.
+
+- **You are responsible for your own data and compliance.** You decide what gets synced and where. If your vault or sessions contain personal data of third parties (for example client information), **you** are the data controller and are responsible for ensuring an appropriate legal basis and storage location — including, where applicable, GDPR obligations and a data processing agreement with your Git host. Keep the data repository private. The built-in secret scan detects credentials, not personal data.
+
+- **It only touches your own files.** The plugin reads and copies the local files that Obsidian and Claude Code already write on your own machine (your vault, and your session logs under `~/.claude/`). It does **not** decompile, reverse-engineer, modify, or redistribute Obsidian, Claude Code, or any other software. It relies on an undocumented local file layout that may change at any time, which could break the tool without notice.
+
+- **Not affiliated.** This project is not affiliated with, endorsed by, or sponsored by Obsidian (Obsidian.md) or Anthropic. "Obsidian" and "Claude" are trademarks of their respective owners and are used here only descriptively, to indicate compatibility.
+
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
