@@ -67,6 +67,24 @@ Then, on **each** machine:
 /brain-setup
 ```
 
+## Two machines
+
+The model is simple: **one GitHub account, one private data repo, both machines talk to it.**
+
+1. **Install + set up on machine A** (e.g. your laptop): install the plugin (above), then run `/brain-setup`. The first machine to run setup creates the private data repo `<you>/obsidian-brain`.
+2. **Install + set up on machine B** (e.g. your desktop): same steps. Because the data repo already exists, setup simply reuses it. Make sure `gh` is logged into the **same** GitHub account on both machines.
+
+That is the one-time part. From then on it is just push and pull.
+
+### Your first sync
+
+Nothing is in the repo until a machine pushes, so the very first time the order matters:
+
+1. On the machine that holds the work you want to move (say machine A): **`/brain-push`** — uploads its vault and all sessions.
+2. On the other machine (machine B): **`/brain-pull`** — brings everything down. `claude --resume` will now list the sessions from machine A.
+
+After that, sync in whichever direction you switch.
+
 ## Daily workflow
 
 - **Laptop, end of day:** `/brain-push`
