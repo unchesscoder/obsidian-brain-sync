@@ -31,10 +31,14 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/brain-sync.mjs" push
 
 ### 3. Secret-Warnungen behandeln
 
-Gibt die Engine `SECRET-WARNUNG: ...` aus, dann diese Treffer dem User **zeigen** und kurz fragen, ob
-der Push ok ist (das Repo ist privat, aber pasted Keys/Tokens in alten Sessions sollte man kennen).
-Der Push selbst ist nicht-blockierend; die Engine fuehrt ihn aus. Wenn der User nicht pushen will,
-NICHT erneut ausfuehren und ihm sagen, wie er die betroffene Datei bereinigt.
+Findet die Engine moegliche Geheimnisse, **blockiert** sie den Push (`Push ABGEBROCHEN`, exit 4) -
+es wird nichts hochgeladen. Die Treffer dem User **zeigen** und die drei Optionen nennen:
+- die betroffene Datei bereinigen, dann erneut pushen,
+- einen **bekannten Fehlalarm** (z.B. ein Beispiel-/Dummy-Token) in `config.secretAllowlist`
+  als exakten Treffer-String eintragen,
+- bewusst trotzdem pushen mit `--allow-secrets`.
+
+Niemals stillschweigend `--allow-secrets` setzen - das ist eine bewusste Entscheidung des Users.
 
 ### 4. Zusammenfassen
 
