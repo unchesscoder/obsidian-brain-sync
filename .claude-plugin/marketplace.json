@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "obsidian-brain-sync",
+  "description": "Sync your Obsidian vault and Claude Code sessions across machines via a private GitHub repo.",
+  "owner": {
+    "name": "unchesscoder"
+  },
+  "plugins": [
+    {
+      "name": "obsidian-brain-sync",
+      "description": "Sync your Obsidian vault and Claude Code sessions across machines through a private GitHub repo. Free alternative to Obsidian Sync.",
+      "author": {
+        "name": "unchesscoder"
+      },
+      "category": "productivity",
+      "source": "./",
+      "homepage": "https://github.com/unchesscoder/obsidian-brain-sync"
+    }
+  ]
+}
