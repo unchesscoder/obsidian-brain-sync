@@ -1,7 +1,7 @@
 {
   "name": "obsidian-brain-sync",
   "description": "Keep your Obsidian vault and your Claude Code sessions in sync across machines through your own private GitHub repo — for free. Push on one device, pull on another, and resume the exact same conversation with `claude --resume`. Includes automatic vault backups, a secret scan before every push, and cross-OS path remapping.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": {
     "name": "unchesscoder"
   },
