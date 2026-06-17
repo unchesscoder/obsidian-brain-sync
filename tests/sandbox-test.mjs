@@ -57,6 +57,12 @@ fs.mkdirSync(ROOT, { recursive: true });
 sh("git", ["init", "--bare", REMOTE]);
 fs.mkdirSync(COMMON, { recursive: true });
 
+// machine D: clone the EMPTY remote now (simulates init-before-any-push), used later
+const HOMED = path.join(ROOT, "homeD");
+const cfgD = makeConfig(HOMED, "machineD");
+writeJson(path.join(HOMED, ".obsidian-brain-sync", "config.json"), cfgD);
+sh("git", ["clone", REMOTE, cfgD.repoPath]); // empty clone, no tracking branch
+
 // === MACHINE A: build + push ===============================================
 console.log("\n[A] build + push");
 const cfgA = makeConfig(HOMEA, "machineA");
@@ -142,6 +148,13 @@ const future = new Date(Date.now() + 60000);
 fs.utimesSync(cOnB, future, future);
 const rC = engine("pull", HOMEB);
 ok(/uebersprungen \(lokal neuer/.test(rC.stdout) || read(cOnB).includes("LOCAL-NEWER-MARKER"), "locally-newer session not overwritten");
+
+// === pull on an EMPTY clone created before any push (the real first-use case) =====
+console.log("\n[D] pull on an empty clone (was cloned while remote was empty)");
+const rD = engine("pull", HOMED);
+if (rD.stderr) console.log("STDERR:\n" + rD.stderr);
+ok(/klone neu/i.test(rD.stdout), "empty clone detected and re-cloned");
+ok(fs.existsSync(path.join(cfgD.vaultPath, "Note.md")), "content pulled successfully onto machine D");
 
 // ---------------------------------------------------------------------------
 console.log(`\n==== ${pass} passed, ${fail} failed ====`);
