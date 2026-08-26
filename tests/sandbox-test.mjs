@@ -226,6 +226,35 @@ const mirrorA = path.join(cfgA.repoPath, "vault-mirror");
 ok(!fs.existsSync(path.join(mirrorA, "Nested", "inside.md")), "nested repo nicht gespiegelt");
 ok(fs.existsSync(path.join(mirrorA, "Note.md")), "normale Notiz gespiegelt");
 
+// === [F] stale push guard ==================================================
+console.log("\n[F] Push-Schutz gegen veralteten Stand");
+// A creates a note and pushes it. B never pulled it -> B's push would delete it.
+writeText(path.join(cfgA.vaultPath, "OnlyA.md"), "created on A\n");
+engine("push", HOMEA);
+const rF1 = engine("push", HOMEB);
+ok(rF1.status === 5, "Push von B bricht mit Exit-Code 5 ab");
+ok(/ABGEBROCHEN/.test(rF1.stdout), "Abbruch wird gemeldet");
+ok(/OnlyA\.md/.test(rF1.stdout), "die betroffene Datei wird genannt");
+
+// the remote must be untouched: A pulls and still has the file
+engine("pull", HOMEA);
+ok(fs.existsSync(path.join(cfgA.vaultPath, "OnlyA.md")), "Remote unveraendert, Datei ueberlebt");
+
+// dry-run reports the same and sets the same exit code
+const rF2 = engine("push", HOMEB, "--dry-run");
+ok(rF2.status === 5, "Dry-Run setzt denselben Exit-Code");
+ok(/ABGEBROCHEN/.test(rF2.stdout), "Dry-Run meldet den Abbruch");
+
+// --allow-stale pushes anyway
+const rF3 = engine("push", HOMEB, "--allow-stale");
+ok(rF3.status === 0, "--allow-stale laesst den Push durch");
+
+// after a proper pull, B can push without the override
+engine("pull", HOMEB);
+writeText(path.join(cfgB.vaultPath, "AfterPull.md"), "b work\n");
+const rF4 = engine("push", HOMEB);
+ok(rF4.status === 0, "nach einem Pull laeuft der Push wieder normal");
+
 // ---------------------------------------------------------------------------
 console.log(`\n==== ${pass} passed, ${fail} failed ====`);
 if (!fail) { try { fs.rmSync(ROOT, { recursive: true, force: true }); } catch {} }
