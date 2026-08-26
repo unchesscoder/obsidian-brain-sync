@@ -226,6 +226,10 @@ const mirrorA = path.join(cfgA.repoPath, "vault-mirror");
 ok(!fs.existsSync(path.join(mirrorA, "Nested", "inside.md")), "nested repo nicht gespiegelt");
 ok(fs.existsSync(path.join(mirrorA, "Note.md")), "normale Notiz gespiegelt");
 
+// === [B2] B inherits allowlist (B pulled A's planted token, needs same allowlist to pass secret scan) ===
+const cfgBpath = path.join(HOMEB, ".obsidian-brain-sync", "config.json");
+const cfgB2 = JSON.parse(read(cfgBpath)); cfgB2.secretAllowlist = ["ghp_ABCDEFGHIJKLMNOPQRST1234"]; writeJson(cfgBpath, cfgB2);
+
 // === [F] stale push guard ==================================================
 console.log("\n[F] Push-Schutz gegen veralteten Stand");
 // A creates a note and pushes it. B never pulled it -> B's push would delete it.
