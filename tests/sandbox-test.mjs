@@ -218,6 +218,14 @@ if (rD.stderr) console.log("STDERR:\n" + rD.stderr);
 ok(/klone neu/i.test(rD.stdout), "empty clone detected and re-cloned");
 ok(fs.existsSync(path.join(cfgD.vaultPath, "Note.md")), "content pulled successfully onto machine D");
 
+// === [E] the mirror never contains nested-repo files =======================
+// listMirrorable (Task 2) must produce exactly the set copyTree mirrors, otherwise
+// the stale guard compares against the wrong list and reports phantom deletions.
+console.log("\n[E] Mirror-Semantik: nested repos");
+const mirrorA = path.join(cfgA.repoPath, "vault-mirror");
+ok(!fs.existsSync(path.join(mirrorA, "Nested", "inside.md")), "nested repo nicht gespiegelt");
+ok(fs.existsSync(path.join(mirrorA, "Note.md")), "normale Notiz gespiegelt");
+
 // ---------------------------------------------------------------------------
 console.log(`\n==== ${pass} passed, ${fail} failed ====`);
 if (!fail) { try { fs.rmSync(ROOT, { recursive: true, force: true }); } catch {} }
