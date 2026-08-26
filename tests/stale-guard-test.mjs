@@ -86,6 +86,59 @@ const T = 1_000_000_000_000; // fixed base timestamp
   ok(r.blocked && r.unsafe.length === 1, "fehlender Manifest-Eintrag gilt als unsicher");
 }
 
+// 5b. deletion WITH baseline entry but NO manifest record -> unsafe (cannot know if remote changed)
+{
+  const r = detectStalePush({
+    remoteFiles: ["a.md"],
+    localFiles: [],
+    baseline: { files: { "a.md": T } },
+    manifestVault: {},
+    indexPath: "Claude Sessions.md",
+  });
+  ok(r.blocked && r.unsafe.length === 1, "Loeschung ohne Manifest-Eintrag blockiert als unsicher");
+  ok(r.unsafe[0] && r.unsafe[0].grund === "kein Manifest-Eintrag", "Grund ist kein Manifest-Eintrag");
+}
+
+// 5c. local file present but no local mtime recorded (failed stat) -> unsafe
+{
+  const r = detectStalePush({
+    remoteFiles: ["a.md"],
+    localFiles: ["a.md"],
+    localMtimes: {},
+    baseline: { files: { "a.md": T } },
+    manifestVault: { "a.md": { mtime: T + 60_000, size: 1 } },
+    indexPath: "Claude Sessions.md",
+  });
+  ok(r.blocked && r.unsafe.length === 1, "fehlende lokale mtime blockiert als unsicher");
+  ok(r.unsafe[0] && r.unsafe[0].grund === "keine lokale mtime", "Grund ist keine lokale mtime");
+}
+
+// 5d. reversion boundary: exactly at tolerance -> NOT blocked (strict comparison)
+{
+  const r = detectStalePush({
+    remoteFiles: ["a.md"],
+    localFiles: ["a.md"],
+    localMtimes: { "a.md": T },
+    baseline: { files: { "a.md": T } },
+    manifestVault: { "a.md": { mtime: T + MTIME_TOLERANCE_MS, size: 1 } },
+    indexPath: "Claude Sessions.md",
+  });
+  ok(!r.blocked, "Differenz von genau MTIME_TOLERANCE_MS blockiert nicht");
+}
+
+// 5e. reversion boundary: one over tolerance -> blocked
+{
+  const r = detectStalePush({
+    remoteFiles: ["a.md"],
+    localFiles: ["a.md"],
+    localMtimes: { "a.md": T },
+    baseline: { files: { "a.md": T } },
+    manifestVault: { "a.md": { mtime: T + MTIME_TOLERANCE_MS + 1, size: 1 } },
+    indexPath: "Claude Sessions.md",
+  });
+  ok(r.blocked && r.reversions.length === 1, "Differenz von MTIME_TOLERANCE_MS + 1 blockiert");
+}
+
 // 6. the session index is never reported
 {
   const r = detectStalePush({
