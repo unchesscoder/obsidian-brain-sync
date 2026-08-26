@@ -259,6 +259,34 @@ writeText(path.join(cfgB.vaultPath, "AfterPull.md"), "b work\n");
 const rF4 = engine("push", HOMEB);
 ok(rF4.status === 0, "nach einem Pull laeuft der Push wieder normal");
 
+// === [G] dry-run must refresh its own clone before judging ================
+// B is fully in sync with the remote at this point (rF4 above just pushed).
+// A now pushes a NEW file that B never saw. The very NEXT command B runs is a
+// dry-run push -- no real push in between. If dry-run judges staleness using
+// B's local clone as it stood before A's push (i.e. skips syncToRemote), it
+// will not see OnlyA2.md as part of the remote at all and will wave the push
+// through with exit 0, even though a real push right now would delete
+// OnlyA2.md on the remote. The dry-run must fetch+reset the clone itself so
+// its verdict (and exit code) matches what a real push would do.
+console.log("\n[G] Dry-Run erkennt fremden Push seit letztem Sync (kein echter Push dazwischen)");
+// bring A fully up to date first so A's OWN push below is not itself blocked by
+// the guard (A must not be missing anything B already published).
+engine("pull", HOMEA);
+writeText(path.join(cfgA.vaultPath, "OnlyA2.md"), "created on A after B synced\n");
+const rGpush = engine("push", HOMEA);
+ok(rGpush.status === 0, "A's push of OnlyA2.md succeeds (A was in sync)");
+// B is still exactly where F4 left it (in sync at that point, but never saw
+// OnlyA2.md). The dry-run below is the first thing B runs since.
+const rG = engine("push", HOMEB, "--dry-run");
+if (rG.stderr) console.log("STDERR:\n" + rG.stderr);
+ok(rG.status === 5, "Dry-Run bricht mit Exit-Code 5 ab (fremder Push seit letztem Sync)");
+ok(/ABGEBROCHEN/.test(rG.stdout), "Dry-Run meldet den Abbruch");
+ok(/OnlyA2\.md/.test(rG.stdout), "die betroffene Datei wird genannt");
+
+// remote must be untouched by the dry-run: A still has both files
+const rGcheck = engine("pull", HOMEA);
+ok(fs.existsSync(path.join(cfgA.vaultPath, "OnlyA2.md")), "Remote unveraendert nach Dry-Run, Datei ueberlebt");
+
 // ---------------------------------------------------------------------------
 console.log(`\n==== ${pass} passed, ${fail} failed ====`);
 if (!fail) { try { fs.rmSync(ROOT, { recursive: true, force: true }); } catch {} }
