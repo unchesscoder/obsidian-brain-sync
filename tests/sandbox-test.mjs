@@ -218,6 +218,146 @@ if (rD.stderr) console.log("STDERR:\n" + rD.stderr);
 ok(/klone neu/i.test(rD.stdout), "empty clone detected and re-cloned");
 ok(fs.existsSync(path.join(cfgD.vaultPath, "Note.md")), "content pulled successfully onto machine D");
 
+// === [E] the mirror never contains nested-repo files =======================
+// listMirrorable (Task 2) must produce exactly the set copyTree mirrors, otherwise
+// the stale guard compares against the wrong list and reports phantom deletions.
+console.log("\n[E] Mirror-Semantik: nested repos");
+const mirrorA = path.join(cfgA.repoPath, "vault-mirror");
+ok(!fs.existsSync(path.join(mirrorA, "Nested", "inside.md")), "nested repo nicht gespiegelt");
+ok(fs.existsSync(path.join(mirrorA, "Note.md")), "normale Notiz gespiegelt");
+
+// === [B2] B inherits allowlist (B pulled A's planted token, needs same allowlist to pass secret scan) ===
+const cfgBpath = path.join(HOMEB, ".obsidian-brain-sync", "config.json");
+const cfgB2 = JSON.parse(read(cfgBpath)); cfgB2.secretAllowlist = ["ghp_ABCDEFGHIJKLMNOPQRST1234"]; writeJson(cfgBpath, cfgB2);
+
+// === [F] stale push guard ==================================================
+console.log("\n[F] Push-Schutz gegen veralteten Stand");
+// A creates a note and pushes it. B never pulled it -> B's push would delete it.
+writeText(path.join(cfgA.vaultPath, "OnlyA.md"), "created on A\n");
+engine("push", HOMEA);
+const rF1 = engine("push", HOMEB);
+ok(rF1.status === 5, "Push von B bricht mit Exit-Code 5 ab");
+ok(/ABGEBROCHEN/.test(rF1.stdout), "Abbruch wird gemeldet");
+ok(/OnlyA\.md/.test(rF1.stdout), "die betroffene Datei wird genannt");
+
+// the remote must be untouched: A pulls and still has the file
+engine("pull", HOMEA);
+ok(fs.existsSync(path.join(cfgA.vaultPath, "OnlyA.md")), "Remote unveraendert, Datei ueberlebt");
+
+// dry-run reports the same and sets the same exit code
+const rF2 = engine("push", HOMEB, "--dry-run");
+ok(rF2.status === 5, "Dry-Run setzt denselben Exit-Code");
+ok(/ABGEBROCHEN/.test(rF2.stdout), "Dry-Run meldet den Abbruch");
+
+// --allow-stale pushes anyway
+const rF3 = engine("push", HOMEB, "--allow-stale");
+ok(rF3.status === 0, "--allow-stale laesst den Push durch");
+
+// after a proper pull, B can push without the override
+engine("pull", HOMEB);
+writeText(path.join(cfgB.vaultPath, "AfterPull.md"), "b work\n");
+const rF4 = engine("push", HOMEB);
+ok(rF4.status === 0, "nach einem Pull laeuft der Push wieder normal");
+
+// === [G] dry-run must refresh its own clone before judging ================
+// B is fully in sync with the remote at this point (rF4 above just pushed).
+// A now pushes a NEW file that B never saw. The very NEXT command B runs is a
+// dry-run push -- no real push in between. If dry-run judges staleness using
+// B's local clone as it stood before A's push (i.e. skips syncToRemote), it
+// will not see OnlyA2.md as part of the remote at all and will wave the push
+// through with exit 0, even though a real push right now would delete
+// OnlyA2.md on the remote. The dry-run must fetch+reset the clone itself so
+// its verdict (and exit code) matches what a real push would do.
+console.log("\n[G] Dry-Run erkennt fremden Push seit letztem Sync (kein echter Push dazwischen)");
+// bring A fully up to date first so A's OWN push below is not itself blocked by
+// the guard (A must not be missing anything B already published).
+engine("pull", HOMEA);
+writeText(path.join(cfgA.vaultPath, "OnlyA2.md"), "created on A after B synced\n");
+const rGpush = engine("push", HOMEA);
+ok(rGpush.status === 0, "A's push of OnlyA2.md succeeds (A was in sync)");
+// B is still exactly where F4 left it (in sync at that point, but never saw
+// OnlyA2.md). The dry-run below is the first thing B runs since.
+const rG = engine("push", HOMEB, "--dry-run");
+if (rG.stderr) console.log("STDERR:\n" + rG.stderr);
+ok(rG.status === 5, "Dry-Run bricht mit Exit-Code 5 ab (fremder Push seit letztem Sync)");
+ok(/ABGEBROCHEN/.test(rG.stdout), "Dry-Run meldet den Abbruch");
+ok(/OnlyA2\.md/.test(rG.stdout), "die betroffene Datei wird genannt");
+
+// remote must be untouched by the dry-run: A still has both files
+const rGcheck = engine("pull", HOMEA);
+ok(fs.existsSync(path.join(cfgA.vaultPath, "OnlyA2.md")), "Remote unveraendert nach Dry-Run, Datei ueberlebt");
+
+// === [H] resurrection guard: local-only file that is in the baseline must not
+// revive a remote deletion =================================================
+console.log("\n[H] Push-Schutz gegen Wiederbelebung geloeschter Dateien");
+// bring B fully in sync first so this block starts clean, not entangled with
+// G's blocked dry-run state. AfterPull.md (created by B in [F], pushed via
+// rF4) is the shared file both machines currently agree on - unlike
+// OnlyA.md, which B's earlier --allow-stale push in [F] already deleted from
+// the remote (B mirrored its own vault, which never had OnlyA.md).
+engine("pull", HOMEB);
+ok(fs.existsSync(path.join(cfgB.vaultPath, "OnlyA2.md")), "B ist nach Pull vollstaendig synchron");
+ok(fs.existsSync(path.join(cfgB.vaultPath, "AfterPull.md")), "B hat AfterPull.md, gemeinsame Baseline-Datei");
+
+// A deletes a file both machines have synced and pushes the deletion.
+fs.rmSync(path.join(cfgA.vaultPath, "AfterPull.md"));
+const rHpush = engine("push", HOMEA);
+ok(rHpush.status === 0, "A's Loeschung von AfterPull.md wird erfolgreich gepusht");
+
+// B still has the file locally (never pulled the deletion), and it is in B's
+// baseline -> pushing would resurrect it on the remote.
+const rH1 = engine("push", HOMEB);
+ok(rH1.status === 5, "Push von B bricht mit Exit-Code 5 ab (Wiederbelebung)");
+ok(/ABGEBROCHEN/.test(rH1.stdout), "Abbruch wird gemeldet");
+ok(/AfterPull\.md/.test(rH1.stdout), "die wiederbelebte Datei wird genannt");
+
+// remote must be untouched: A pulls and AfterPull.md is still gone
+engine("pull", HOMEA);
+ok(!fs.existsSync(path.join(cfgA.vaultPath, "AfterPull.md")), "Remote unveraendert, Datei bleibt geloescht");
+
+// --allow-stale pushes anyway
+const rH2 = engine("push", HOMEB, "--allow-stale");
+ok(rH2.status === 0, "--allow-stale laesst den Wiederbelebungs-Push durch");
+
+// === [I] pull tolerance: no phantom "lokal neuer" on an unchanged second pull ===
+// utimesSync writes an mtime through a JS Date (milliseconds) while NTFS stores
+// 100ns ticks, so the value reads back marginally larger than the manifest's.
+// Without a tolerance, every file the pull just wrote looks "locally newer" on
+// the next pull - noise that hides real divergence.
+// Driving this through the real filesystem is not reliable: on some filesystems
+// (and in the OS temp dir this sandbox runs in) the rounding does not reproduce,
+// so such a test passes with and without the tolerance and proves nothing.
+// Instead we nudge the mtime explicitly to both sides of the threshold.
+console.log("\n[I] Pull-Toleranz gegen mtime-Rundung");
+// A is stale after B's --allow-stale push in [H] - the guard would (correctly)
+// block A's push. Bring A up to date first so this block tests the pull, not the guard.
+engine("pull", HOMEA);
+writeText(path.join(cfgA.vaultPath, "Tolerance.md"), "v1\n");
+const rIpush = engine("push", HOMEA);
+ok(rIpush.status === 0, "A kann nach Pull wieder pushen");
+engine("pull", HOMEB);
+const tolFile = path.join(cfgB.vaultPath, "Tolerance.md");
+ok(fs.existsSync(tolFile), "Testdatei nach Pull auf B vorhanden");
+
+// sub-tolerance drift (what utimesSync rounding produces) must NOT count as newer
+const base = fs.statSync(tolFile).mtimeMs;
+const nudged = new Date(base + 1);
+fs.utimesSync(tolFile, nudged, nudged);
+const rI1 = engine("pull", HOMEB);
+ok(!/uebersprungen \(lokal neuer\)/.test(rI1.stdout),
+   "Drift von 1ms gilt nicht als 'lokal neuer'");
+
+// a real local edit (well past the tolerance) must STILL be protected
+const far = new Date(base + 180000);
+fs.utimesSync(tolFile, far, far);
+writeText(tolFile, "echte lokale Aenderung\n");
+fs.utimesSync(tolFile, far, far);
+const rI2 = engine("pull", HOMEB);
+ok(/uebersprungen \(lokal neuer\)/.test(rI2.stdout),
+   "echte lokale Aenderung wird weiterhin als 'lokal neuer' geschuetzt");
+ok(read(tolFile).includes("echte lokale Aenderung"),
+   "die lokale Aenderung wurde nicht ueberschrieben");
+
 // ---------------------------------------------------------------------------
 console.log(`\n==== ${pass} passed, ${fail} failed ====`);
 if (!fail) { try { fs.rmSync(ROOT, { recursive: true, force: true }); } catch {} }

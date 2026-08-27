@@ -40,7 +40,22 @@ es wird nichts hochgeladen. Die Treffer dem User **zeigen** und die drei Optione
 
 Niemals stillschweigend `--allow-secrets` setzen - das ist eine bewusste Entscheidung des Users.
 
-### 4. Zusammenfassen
+### 4. Veralteten Stand behandeln
+
+Meldet die Engine `Push ABGEBROCHEN: dieses Geraet hat einen veralteten Stand` (exit 5), hat dieses
+Geraet Aenderungen des anderen Geraets nie geholt. Ein Push wuerde:
+- Dateien aus dem Remote **loeschen**, die dieses Geraet nie gesehen hat,
+- neuere Versionen mit aelteren **ueberschreiben**,
+- oder anderswo geloeschte Dateien wieder **auferstehen** lassen.
+
+Die Engine listet die betroffenen Dateien auf. Dem User zeigen und die richtige Reaktion nennen:
+**erst `/brain-pull`, dann erneut pushen.**
+
+`--allow-stale` gibt es nur fuer den bewussten Fall, in dem der Remote-Stand wirklich verworfen
+werden soll. Es ist kein Weg, die Meldung loszuwerden - es ist die Entscheidung, Daten zu verlieren.
+Niemals stillschweigend setzen.
+
+### 5. Zusammenfassen
 
 Dem User in 2-3 Zeilen melden: von welchem Geraet gepusht, wie viele Sessions + Vault-Dateien,
 und der Hinweis: auf dem anderen Geraet `/brain-pull` nutzen, um den Stand zu holen.
