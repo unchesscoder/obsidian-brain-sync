@@ -319,6 +319,45 @@ ok(!fs.existsSync(path.join(cfgA.vaultPath, "AfterPull.md")), "Remote unveraende
 const rH2 = engine("push", HOMEB, "--allow-stale");
 ok(rH2.status === 0, "--allow-stale laesst den Wiederbelebungs-Push durch");
 
+// === [I] pull tolerance: no phantom "lokal neuer" on an unchanged second pull ===
+// utimesSync writes an mtime through a JS Date (milliseconds) while NTFS stores
+// 100ns ticks, so the value reads back marginally larger than the manifest's.
+// Without a tolerance, every file the pull just wrote looks "locally newer" on
+// the next pull - noise that hides real divergence.
+// Driving this through the real filesystem is not reliable: on some filesystems
+// (and in the OS temp dir this sandbox runs in) the rounding does not reproduce,
+// so such a test passes with and without the tolerance and proves nothing.
+// Instead we nudge the mtime explicitly to both sides of the threshold.
+console.log("\n[I] Pull-Toleranz gegen mtime-Rundung");
+// A is stale after B's --allow-stale push in [H] - the guard would (correctly)
+// block A's push. Bring A up to date first so this block tests the pull, not the guard.
+engine("pull", HOMEA);
+writeText(path.join(cfgA.vaultPath, "Tolerance.md"), "v1\n");
+const rIpush = engine("push", HOMEA);
+ok(rIpush.status === 0, "A kann nach Pull wieder pushen");
+engine("pull", HOMEB);
+const tolFile = path.join(cfgB.vaultPath, "Tolerance.md");
+ok(fs.existsSync(tolFile), "Testdatei nach Pull auf B vorhanden");
+
+// sub-tolerance drift (what utimesSync rounding produces) must NOT count as newer
+const base = fs.statSync(tolFile).mtimeMs;
+const nudged = new Date(base + 1);
+fs.utimesSync(tolFile, nudged, nudged);
+const rI1 = engine("pull", HOMEB);
+ok(!/uebersprungen \(lokal neuer\)/.test(rI1.stdout),
+   "Drift von 1ms gilt nicht als 'lokal neuer'");
+
+// a real local edit (well past the tolerance) must STILL be protected
+const far = new Date(base + 180000);
+fs.utimesSync(tolFile, far, far);
+writeText(tolFile, "echte lokale Aenderung\n");
+fs.utimesSync(tolFile, far, far);
+const rI2 = engine("pull", HOMEB);
+ok(/uebersprungen \(lokal neuer\)/.test(rI2.stdout),
+   "echte lokale Aenderung wird weiterhin als 'lokal neuer' geschuetzt");
+ok(read(tolFile).includes("echte lokale Aenderung"),
+   "die lokale Aenderung wurde nicht ueberschrieben");
+
 // ---------------------------------------------------------------------------
 console.log(`\n==== ${pass} passed, ${fail} failed ====`);
 if (!fail) { try { fs.rmSync(ROOT, { recursive: true, force: true }); } catch {} }
