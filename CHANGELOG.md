@@ -3,6 +3,33 @@
 All notable changes to **obsidian-brain-sync** are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] — 2026-08-27
+
+### Added
+- **The push now refuses to destroy the remote from a stale machine.** The push is a mirror, so a
+  machine that had not pulled in a while would silently delete files it never knew about, overwrite
+  newer notes with older copies, and resurrect files another machine had deleted. Before mirroring,
+  the push compares the remote against the last state this machine actually synced and **aborts**
+  (exit 5) if any of those three would happen, naming every affected file. Nothing is committed or
+  uploaded. The fix is a `pull`; `--allow-stale` overrides deliberately.
+  A deletion is only let through when the remote still holds exactly the version this machine last
+  saw — if it moved on since, the deletion would discard someone else's work and is blocked too.
+  Any state the guard cannot judge (missing manifest entry, unreadable mtime) blocks as well:
+  in doubt, block.
+
+### Fixed
+- **Phantom "lokal neuer" reports on pull.** `utimesSync` writes an mtime through a JS `Date`
+  (milliseconds) while NTFS stores 100ns ticks, so every file a pull wrote read back marginally
+  "newer" on the next pull — hundreds of false reports per run. Both newer-wins comparisons now use
+  the same 2s tolerance the delete check already used. This mattered more than it looks: that noise
+  is what hid a real two-month data divergence until files went missing.
+- **Leftover mirror files after an aborted push.** `git reset --hard` does not remove untracked
+  files, so a push aborted by the secret scan left stale `vault-mirror` content behind that made the
+  next run misjudge what the remote actually contained. The working copy is now cleaned as well.
+- **`--dry-run` on push could reach a different verdict than the real run.** It skipped the remote
+  sync, so it judged staleness against a possibly days-old local clone. It now refreshes first — a
+  preview that can disagree with the run it previews is worse than no preview.
+
 ## [0.3.0] — 2026-06-17
 
 ### Changed
