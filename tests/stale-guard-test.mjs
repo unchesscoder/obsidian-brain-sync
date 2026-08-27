@@ -235,5 +235,41 @@ const T = 1_000_000_000_000; // fixed base timestamp
      "Report nennt Abbruch, Pull-Hinweis und Override-Flag");
 }
 
+// non-finite mtimes must block, not slip through numeric comparisons.
+// NaN passes `typeof x === "number"` and every comparison against NaN is false,
+// so a naive type check would let both the deletion and the reversion path pass silently.
+{
+  const r = detectStalePush({
+    remoteFiles: ["a.md"],
+    localFiles: [],
+    baseline: { files: { "a.md": T } },
+    manifestVault: { "a.md": { mtime: NaN, size: 1 } },
+    indexPath: "Claude Sessions.md",
+  });
+  ok(r.blocked && r.unsafe.length === 1, "NaN als Remote-mtime blockiert die Loeschung");
+}
+{
+  const r = detectStalePush({
+    remoteFiles: ["a.md"],
+    localFiles: ["a.md"],
+    localMtimes: { "a.md": T },
+    baseline: { files: { "a.md": T } },
+    manifestVault: { "a.md": { mtime: Infinity, size: 1 } },
+    indexPath: "Claude Sessions.md",
+  });
+  ok(r.blocked && r.unsafe.length === 1, "Infinity als Remote-mtime blockiert");
+}
+{
+  const r = detectStalePush({
+    remoteFiles: ["a.md"],
+    localFiles: ["a.md"],
+    localMtimes: { "a.md": NaN },
+    baseline: { files: { "a.md": T } },
+    manifestVault: { "a.md": { mtime: T + 60_000, size: 1 } },
+    indexPath: "Claude Sessions.md",
+  });
+  ok(r.blocked && r.unsafe.length === 1, "NaN als lokale mtime blockiert die Rueckdrehung");
+}
+
 console.log(`\n==== ${pass} passed, ${fail} failed ====`);
 process.exit(fail ? 1 : 0);
