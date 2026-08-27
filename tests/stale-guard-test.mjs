@@ -171,6 +171,59 @@ const T = 1_000_000_000_000; // fixed base timestamp
   ok(r.blocked && r.deletions.length === 2, "fehlende Baseline blockiert alle Remote-Dateien");
 }
 
+// 10. local-only file IN baseline -> remote dropped it, pushing would resurrect it -> blocked
+{
+  const r = detectStalePush({
+    remoteFiles: [],
+    localFiles: ["a.md"],
+    localMtimes: { "a.md": T },
+    baseline: { files: { "a.md": T } },
+    manifestVault: {},
+    indexPath: "Claude Sessions.md",
+  });
+  ok(r.blocked && r.resurrections.length === 1 && r.resurrections[0].rel === "a.md",
+     "lokale Datei aus der Baseline, die remote fehlt, wird als Wiederbelebung blockiert");
+}
+
+// 11. local-only file NOT in baseline -> genuinely new note -> allowed
+{
+  const r = detectStalePush({
+    remoteFiles: [],
+    localFiles: ["new.md"],
+    localMtimes: { "new.md": T },
+    baseline: { files: {} },
+    manifestVault: {},
+    indexPath: "Claude Sessions.md",
+  });
+  ok(!r.blocked && r.resurrections.length === 0, "neue lokale Datei ausserhalb der Baseline wird durchgelassen");
+}
+
+// 12. baseline null (device never synced) -> every local-only file counts as new -> allowed
+{
+  const r = detectStalePush({
+    remoteFiles: [],
+    localFiles: ["a.md", "b.md"],
+    localMtimes: { "a.md": T, "b.md": T },
+    baseline: null,
+    manifestVault: {},
+    indexPath: "Claude Sessions.md",
+  });
+  ok(!r.blocked && r.resurrections.length === 0, "fehlende Baseline erzeugt keine Wiederbelebungs-Fehlalarme (Erstpush)");
+}
+
+// 13. session index file is local-only and in baseline, but must never be reported
+{
+  const r = detectStalePush({
+    remoteFiles: [],
+    localFiles: ["Claude Sessions.md"],
+    localMtimes: { "Claude Sessions.md": T },
+    baseline: { files: { "Claude Sessions.md": T } },
+    manifestVault: {},
+    indexPath: "Claude Sessions.md",
+  });
+  ok(!r.blocked && r.resurrections.length === 0, "Session-Index wird auch bei der Wiederbelebungs-Pruefung ausgenommen");
+}
+
 // 9. report text mentions counts and the pull hint
 {
   const r = detectStalePush({

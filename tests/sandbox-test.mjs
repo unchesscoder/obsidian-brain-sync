@@ -287,6 +287,38 @@ ok(/OnlyA2\.md/.test(rG.stdout), "die betroffene Datei wird genannt");
 const rGcheck = engine("pull", HOMEA);
 ok(fs.existsSync(path.join(cfgA.vaultPath, "OnlyA2.md")), "Remote unveraendert nach Dry-Run, Datei ueberlebt");
 
+// === [H] resurrection guard: local-only file that is in the baseline must not
+// revive a remote deletion =================================================
+console.log("\n[H] Push-Schutz gegen Wiederbelebung geloeschter Dateien");
+// bring B fully in sync first so this block starts clean, not entangled with
+// G's blocked dry-run state. AfterPull.md (created by B in [F], pushed via
+// rF4) is the shared file both machines currently agree on - unlike
+// OnlyA.md, which B's earlier --allow-stale push in [F] already deleted from
+// the remote (B mirrored its own vault, which never had OnlyA.md).
+engine("pull", HOMEB);
+ok(fs.existsSync(path.join(cfgB.vaultPath, "OnlyA2.md")), "B ist nach Pull vollstaendig synchron");
+ok(fs.existsSync(path.join(cfgB.vaultPath, "AfterPull.md")), "B hat AfterPull.md, gemeinsame Baseline-Datei");
+
+// A deletes a file both machines have synced and pushes the deletion.
+fs.rmSync(path.join(cfgA.vaultPath, "AfterPull.md"));
+const rHpush = engine("push", HOMEA);
+ok(rHpush.status === 0, "A's Loeschung von AfterPull.md wird erfolgreich gepusht");
+
+// B still has the file locally (never pulled the deletion), and it is in B's
+// baseline -> pushing would resurrect it on the remote.
+const rH1 = engine("push", HOMEB);
+ok(rH1.status === 5, "Push von B bricht mit Exit-Code 5 ab (Wiederbelebung)");
+ok(/ABGEBROCHEN/.test(rH1.stdout), "Abbruch wird gemeldet");
+ok(/AfterPull\.md/.test(rH1.stdout), "die wiederbelebte Datei wird genannt");
+
+// remote must be untouched: A pulls and AfterPull.md is still gone
+engine("pull", HOMEA);
+ok(!fs.existsSync(path.join(cfgA.vaultPath, "AfterPull.md")), "Remote unveraendert, Datei bleibt geloescht");
+
+// --allow-stale pushes anyway
+const rH2 = engine("push", HOMEB, "--allow-stale");
+ok(rH2.status === 0, "--allow-stale laesst den Wiederbelebungs-Push durch");
+
 // ---------------------------------------------------------------------------
 console.log(`\n==== ${pass} passed, ${fail} failed ====`);
 if (!fail) { try { fs.rmSync(ROOT, { recursive: true, force: true }); } catch {} }
